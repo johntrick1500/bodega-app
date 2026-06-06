@@ -1,4 +1,4 @@
-const CACHE = 'bodega-v1';
+const CACHE = 'bodega-v2';
 const ASSETS = [
   './',
   './index.html',
