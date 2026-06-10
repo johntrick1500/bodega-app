@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="theme-color" content="#0f6e56"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>Bodega</title>
+<link rel="manifest" href="manifest.json"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --teal-50:#e1f5ee;--teal-100:#9fe1cb;--teal-500:#1d9e75;--teal-600:#0f6e56;--teal-700:#085041;
+    --amber-50:#faeeda;--amber-400:#ba7517;--amber-500:#ef9f27;
+    --red-50:#fcebeb;--red-500:#e24b4a;--red-600:#a32d2d;
+    --gray-50:#f8f9fa;--gray-100:#f1efea;--gray-200:#d3d1c7;--gray-500:#888780;--gray-700:#444441;--gray-900:#1a1a18;
+    --white:#ffffff;--radius-sm:8px;--radius-md:12px;--radius-lg:16px;--shadow-md:0 4px 16px rgba(0,0,0,0.10);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--gray-100);color:var(--gray-900);}
+  #app{display:flex;flex-direction:column;height:100vh;max-width:480px;margin:0 auto;background:var(--white);position:relative;overflow:hidden;}
+  .header{background:var(--teal-600);color:white;padding:14px 16px 12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+  .header-title{font-size:20px;font-weight:700;letter-spacing:-0.5px;}
+  .header-sub{font-size:12px;opacity:0.75;margin-top:1px;}
+  .header-right{display:flex;gap:6px;align-items:center;}
+  .sync-btn{background:rgba(255,255,255,0.18);border:none;color:white;padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;}
+  .sync-btn:active{background:rgba(255,255,255,0.28);}
+  .pull-btn{background:rgba(255,255,255,0.12);border:none;color:white;padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;}
+  .pull-btn:active{background:rgba(255,255,255,0.22);}
+  .sync-dot{width:7px;height:7px;border-radius:50%;background:#5dcaa5;flex-shrink:0;}
+  .sync-dot.pending{background:var(--amber-500);}
+  .sync-dot.error{background:#f0997b;}
+  .tabs{display:flex;background:var(--white);border-bottom:1.5px solid var(--gray-200);flex-shrink:0;}
+  .tab{flex:1;padding:10px 0;text-align:center;font-size:12px;font-weight:600;color:var(--gray-500);cursor:pointer;border-bottom:2.5px solid transparent;}
+  .tab.active{color:var(--teal-600);border-bottom-color:var(--teal-600);}
+  .content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .panel{display:none;padding:16px;}
+  .panel.active{display:block;}
+  .card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:14px;margin-bottom:10px;}
+  .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .card-title{font-size:14px;font-weight:700;color:var(--gray-900);}
+  .card-sub{font-size:12px;color:var(--gray-500);}
+  .product-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--gray-100);}
+  .product-item:last-child{border-bottom:none;}
+  .product-thumb{width:48px;height:48px;border-radius:var(--radius-sm);background:var(--teal-50);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;cursor:pointer;overflow:hidden;}
+  .product-thumb img{width:100%;height:100%;object-fit:cover;}
+  .product-info{flex:1;min-width:0;}
+  .product-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .product-meta{font-size:12px;color:var(--gray-500);margin-top:2px;}
+  .stock-controls{display:flex;align-items:center;gap:6px;}
+  .stock-btn{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--gray-200);background:var(--white);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--teal-600);flex-shrink:0;}
+  .stock-btn:active{background:var(--teal-50);}
+  .stock-num{font-size:13px;font-weight:700;min-width:28px;text-align:center;}
+  .fab{position:fixed;bottom:80px;right:20px;width:52px;height:52px;border-radius:50%;background:var(--teal-600);border:none;color:white;font-size:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-md);z-index:100;}
+  .fab:active{transform:scale(0.94);}
+  .rush-fab{position:fixed;bottom:80px;right:20px;background:var(--teal-600);border:none;color:white;padding:12px 18px;border-radius:28px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:var(--shadow-md);z-index:100;}
+  .rush-fab:active{transform:scale(0.96);}
+  #rush-overlay{position:fixed;inset:0;z-index:200;background:#0b4a39;display:none;flex-direction:column;max-width:480px;margin:0 auto;left:50%;transform:translateX(-50%);width:100%;}
+  #rush-overlay.open{display:flex;}
+  .rush-header{background:#0b4a39;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.1);}
+  .rush-title{color:white;font-size:18px;font-weight:800;}
+  .rush-close{background:rgba(255,255,255,0.15);border:none;color:white;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .rush-grid{flex:1;overflow-y:auto;padding:12px;display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-content:start;}
+  .rush-card{background:rgba(255,255,255,0.08);border:2px solid transparent;border-radius:var(--radius-lg);padding:14px 12px;cursor:pointer;transition:all 0.12s;display:flex;flex-direction:column;align-items:center;text-align:center;min-height:130px;justify-content:center;}
+  .rush-card.selected{background:rgba(29,158,117,0.35);border-color:#5dcaa5;}
+  .rush-card:active{transform:scale(0.96);}
+  .rush-card-img{width:56px;height:56px;border-radius:var(--radius-sm);background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:8px;overflow:hidden;flex-shrink:0;}
+  .rush-card-img img{width:100%;height:100%;object-fit:cover;}
+  .rush-card-name{font-size:13px;font-weight:700;color:white;line-height:1.3;margin-bottom:4px;}
+  .rush-card-price{font-size:12px;color:rgba(255,255,255,0.65);}
+  .rush-card-stock{font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px;}
+  .rush-footer{background:#0b4a39;border-top:1px solid rgba(255,255,255,0.1);padding:12px 16px;flex-shrink:0;}
+  .rush-selected-info{color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:10px;min-height:18px;}
+  .rush-selected-name{color:white;font-weight:700;}
+  .rush-qty-row{display:flex;align-items:center;gap:12px;margin-bottom:12px;}
+  .rush-qty-btn{width:52px;height:52px;border-radius:50%;border:none;font-size:26px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .rush-qty-minus{background:rgba(255,255,255,0.12);color:white;}
+  .rush-qty-minus:active{background:rgba(255,255,255,0.22);}
+  .rush-qty-plus{background:var(--teal-500);color:white;}
+  .rush-qty-plus:active{background:var(--teal-600);}
+  .rush-qty-display{flex:1;text-align:center;font-size:42px;font-weight:800;color:white;line-height:1;}
+  .rush-qty-label{color:rgba(255,255,255,0.5);font-size:12px;text-align:center;margin-top:-4px;margin-bottom:12px;}
+  .rush-record-btn{width:100%;padding:16px;background:var(--teal-500);border:none;color:white;border-radius:var(--radius-md);font-size:18px;font-weight:800;cursor:pointer;}
+  .rush-record-btn:active{background:var(--teal-600);transform:scale(0.98);}
+  .rush-record-btn:disabled{background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);}
+  .rush-toast{position:absolute;top:70px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.15);color:white;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:600;opacity:0;transition:opacity 0.2s;white-space:nowrap;pointer-events:none;}
+  .rush-toast.show{opacity:1;}
+  .sale-row{display:flex;gap:10px;margin-bottom:12px;}
+  .sale-select{flex:1;padding:10px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);font-size:14px;background:var(--white);color:var(--gray-900);appearance:none;}
+  .sale-qty{width:70px;padding:10px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);font-size:14px;text-align:center;background:var(--white);}
+  .sale-submit{padding:10px 16px;background:var(--teal-600);color:white;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;}
+  .sale-submit:active{background:var(--teal-700);}
+  .sale-log-item{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--gray-100);gap:10px;}
+  .sale-log-item:last-child{border-bottom:none;}
+  .sale-log-info{flex:1;}
+  .sale-log-name{font-size:14px;font-weight:600;}
+  .sale-log-meta{font-size:12px;color:var(--gray-500);margin-top:1px;}
+  .sale-log-amount{font-size:14px;font-weight:700;color:var(--teal-600);white-space:nowrap;}
+  .undo-btn{background:none;border:1px solid var(--gray-200);color:var(--gray-500);padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;white-space:nowrap;}
+  .undo-btn:active{background:var(--red-50);color:var(--red-600);border-color:var(--red-600);}
+  .stats-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+  .stat-card{background:var(--gray-100);border-radius:var(--radius-sm);padding:12px;}
+  .stat-label{font-size:11px;color:var(--gray-500);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;}
+  .stat-value{font-size:18px;font-weight:800;color:var(--teal-600);}
+  .report-section{margin-bottom:16px;}
+  .report-title{font-size:13px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;}
+  .report-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--gray-100);font-size:14px;}
+  .report-row:last-child{border-bottom:none;}
+  .report-row.total{font-weight:700;font-size:15px;color:var(--teal-600);}
+  .trend-badge{font-size:12px;font-weight:600;padding:3px 8px;border-radius:20px;}
+  .trend-hot{background:#fff3e0;color:#e65100;}
+  .trend-ok{background:var(--teal-50);color:var(--teal-600);}
+  .trend-slow{background:var(--gray-100);color:var(--gray-500);}
+  .restock-alert{background:var(--amber-50);border-left:3px solid var(--amber-500);padding:8px 12px;border-radius:0 var(--radius-sm) var(--radius-sm) 0;margin-bottom:6px;font-size:13px;color:var(--amber-400);font-weight:600;}
+  .export-row{display:flex;gap:10px;}
+  .export-btn{flex:1;padding:12px;border:1.5px solid var(--gray-200);background:var(--white);border-radius:var(--radius-sm);font-size:13px;font-weight:700;cursor:pointer;text-align:center;color:var(--gray-700);}
+  .export-btn.primary{background:var(--teal-600);color:white;border-color:var(--teal-600);}
+  .export-btn:active{opacity:0.8;}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;display:none;align-items:flex-end;justify-content:center;}
+  .modal-bg.open{display:flex;}
+  .modal{background:var(--white);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:20px 16px 32px;width:100%;max-width:480px;}
+  .modal-title{font-size:17px;font-weight:700;margin-bottom:16px;}
+  .form-label{font-size:12px;font-weight:600;color:var(--gray-500);margin-bottom:5px;display:block;}
+  .form-input{width:100%;padding:11px 13px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);font-size:15px;margin-bottom:12px;background:var(--white);color:var(--gray-900);}
+  .form-input:focus{outline:none;border-color:var(--teal-500);}
+  .form-row{display:flex;gap:10px;}
+  .form-row .form-input{flex:1;}
+  .modal-actions{display:flex;gap:10px;margin-top:4px;}
+  .btn-cancel{flex:1;padding:13px;border:1.5px solid var(--gray-200);background:var(--white);border-radius:var(--radius-sm);font-size:15px;font-weight:600;cursor:pointer;color:var(--gray-700);}
+  .btn-save{flex:2;padding:13px;background:var(--teal-600);color:white;border:none;border-radius:var(--radius-sm);font-size:15px;font-weight:700;cursor:pointer;}
+  .btn-save:active{background:var(--teal-700);}
+  .settings-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--gray-100);}
+  .settings-row:last-child{border-bottom:none;}
+  .settings-label{font-size:14px;font-weight:600;}
+  .settings-sub{font-size:12px;color:var(--gray-500);margin-top:2px;}
+  .url-display{font-size:11px;color:var(--teal-600);font-family:monospace;word-break:break-all;margin-top:4px;}
+  .empty{text-align:center;padding:40px 20px;color:var(--gray-500);}
+  .empty-icon{font-size:40px;margin-bottom:10px;}
+  .empty-text{font-size:14px;}
+  #toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--gray-700);color:white;padding:10px 20px;border-radius:24px;font-size:13px;font-weight:600;opacity:0;transition:opacity 0.25s;pointer-events:none;z-index:500;white-space:nowrap;max-width:90vw;text-align:center;}
+  #toast.show{opacity:1;}
+  .bottom-nav{display:flex;background:var(--white);border-top:1px solid var(--gray-200);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom);}
+  .nav-item{flex:1;padding:10px 0 8px;text-align:center;cursor:pointer;}
+  .nav-icon{font-size:22px;margin-bottom:2px;}
+  .nav-label{font-size:10px;font-weight:600;color:var(--gray-500);letter-spacing:0.3px;}
+  .nav-item.active .nav-label{color:var(--teal-600);}
+  @media(prefers-color-scheme:dark){
+    :root{--white:#1c1c1e;--gray-100:#3a3a3c;--gray-200:#48484a;--gray-500:#8e8e93;--gray-700:#c7c7cc;--gray-900:#f2f2f7;}
+    .form-input,.sale-select,.sale-qty{background:#2c2c2e;color:#f2f2f7;border-color:#48484a;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div>
+      <div class="header-title">Bodega</div>
+      <div class="header-sub" id="header-date"></div>
+    </div>
+    <div class="header-right">
+      <button class="pull-btn" onclick="pullFromSheet()">&#8595; Pull</button>
+      <button class="sync-btn" onclick="syncAll()">
+        <span class="sync-dot" id="sync-dot"></span>
+        <span id="sync-label">Sync</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('inventory')">📦 Stock</div>
+    <div class="tab" onclick="switchTab('sales')">🧾 Sales</div>
+    <div class="tab" onclick="switchTab('report')">📊 Report</div>
+    <div class="tab" onclick="switchTab('settings')">⚙️</div>
+  </div>
+
+  <div class="content">
+    <!-- INVENTORY -->
+    <div class="panel active" id="panel-inventory">
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-label">Total Products</div><div class="stat-value" id="total-products">0</div></div>
+        <div class="stat-card"><div class="stat-label">Low Stock</div><div class="stat-value" id="low-stock-count" style="color:#ba7517">0</div></div>
+      </div>
+      <div id="product-list"></div>
+    </div>
+
+    <!-- SALES -->
+    <div class="panel" id="panel-sales">
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-label">Today's Revenue</div><div class="stat-value" id="today-revenue">Rp 0</div></div>
+        <div class="stat-card"><div class="stat-label">Profit</div><div class="stat-value" id="today-profit">Rp 0</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">Record Sale</div>
+        <div class="sale-row">
+          <select class="sale-select" id="sale-product-select"><option value="">Select product...</option></select>
+          <input type="number" class="sale-qty" id="sale-qty" value="1" min="1"/>
+          <button class="sale-submit" onclick="recordSale()">Record</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Sales Log</div>
+          <div class="card-sub" id="sale-count">0 transactions</div>
+        </div>
+        <div id="sales-log"></div>
+      </div>
+    </div>
+
+    <!-- REPORT -->
+    <div class="panel" id="panel-report">
+      <div class="card">
+        <div class="report-section">
+          <div class="report-title">Today's Summary</div>
+          <div class="report-row"><span>Total Revenue</span><span id="rpt-revenue" style="font-weight:700">Rp 0</span></div>
+          <div class="report-row"><span>Total Cost of Goods</span><span id="rpt-cost">Rp 0</span></div>
+          <div class="report-row total"><span>Net Profit</span><span id="rpt-profit">Rp 0</span></div>
+          <div class="report-row"><span>Margin</span><span id="rpt-margin">0%</span></div>
+          <div class="report-row"><span>Transactions</span><span id="rpt-txns">0</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="report-section">
+          <div class="report-title">Product Trends</div>
+          <div id="rpt-trends"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="report-section">
+          <div class="report-title">Restock Alerts</div>
+          <div id="rpt-restock"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="report-section">
+          <div class="report-title">Remaining Stock Value</div>
+          <div class="report-row total"><span>Total Stock Value</span><span id="rpt-stock-val">Rp 0</span></div>
+        </div>
+      </div>
+      <div class="export-row" style="margin-bottom:80px">
+        <button class="export-btn" onclick="copyReport()">📋 Copy Text</button>
+        <button class="export-btn primary" onclick="exportExcel()">📥 Excel</button>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="panel" id="panel-settings">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px">Google Sheets Sync</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Apps Script URL</div>
+            <div class="settings-sub">Web App URL from doPost</div>
+            <div class="url-display" id="url-display">Not set</div>
+          </div>
+          <button class="export-btn" style="flex:none;padding:8px 14px;font-size:12px;background:var(--teal-600);color:white;border-color:var(--teal-600);" onclick="showUrlModal()">Change</button>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Sync Status</div>
+            <div class="settings-sub" id="last-sync-text">Never synced</div>
+          </div>
+          <button class="export-btn" style="flex:none;padding:8px 16px;font-size:12px;" onclick="syncAll()">Sync Now</button>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Pull from Sheet</div>
+            <div class="settings-sub">Import products &amp; sales from Google Sheets</div>
+          </div>
+          <button class="export-btn" style="flex:none;padding:8px 16px;font-size:12px;color:var(--teal-600);border-color:var(--teal-600);" onclick="pullFromSheet()">&#8595; Pull Now</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px">Data</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Reset Daily Sales</div>
+            <div class="settings-sub">Delete today's sales log</div>
+          </div>
+          <button class="export-btn" style="flex:none;padding:8px 16px;font-size:12px;color:var(--red-600);" onclick="resetSales()">Reset</button>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Clear All Data</div>
+            <div class="settings-sub">Products and history</div>
+          </div>
+          <button class="export-btn" style="flex:none;padding:8px 16px;font-size:12px;color:var(--red-600);" onclick="clearAll()">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <div class="nav-item active" id="nav-inventory" onclick="switchTab('inventory')"><div class="nav-icon">📦</div><div class="nav-label">Stock</div></div>
+    <div class="nav-item" id="nav-sales" onclick="switchTab('sales')"><div class="nav-icon">🧾</div><div class="nav-label">Sales</div></div>
+    <div class="nav-item" id="nav-report" onclick="switchTab('report')"><div class="nav-icon">📊</div><div class="nav-label">Report</div></div>
+    <div class="nav-item" id="nav-settings" onclick="switchTab('settings')"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></div>
+  </div>
+</div>
+
+<!-- ADD PRODUCT MODAL -->
+<div class="modal-bg" id="modal-product">
+  <div class="modal">
+    <div class="modal-title" id="modal-product-title">Add Product</div>
+    <label class="form-label">Product Name</label>
+    <input class="form-input" id="p-name" placeholder="e.g. Frozen Chicken 1kg" autocomplete="off"/>
+    <div class="form-row">
+      <div style="flex:1"><label class="form-label">Selling Price (Rp)</label><input class="form-input" id="p-sell" type="number" placeholder="25000"/></div>
+      <div style="flex:1"><label class="form-label">Cost Price (Rp)</label><input class="form-input" id="p-cost" type="number" placeholder="20000"/></div>
+    </div>
+    <div class="form-row">
+      <div style="flex:1"><label class="form-label">Initial Stock</label><input class="form-input" id="p-stock" type="number" placeholder="50"/></div>
+      <div style="flex:1"><label class="form-label">Reorder Point</label><input class="form-input" id="p-reorder" type="number" placeholder="10"/></div>
+    </div>
+    <label class="form-label">Unit</label>
+    <input class="form-input" id="p-unit" placeholder="pcs / kg / pack"/>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modal-product')">Cancel</button>
+      <button class="btn-save" onclick="saveProduct()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESTOCK MODAL -->
+<div class="modal-bg" id="modal-restock">
+  <div class="modal">
+    <div class="modal-title">Add Stock</div>
+    <div style="font-size:15px;margin-bottom:6px;" id="restock-product-name"></div>
+    <div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">Current stock: <strong id="restock-current"></strong></div>
+    <label class="form-label">Amount to Add</label>
+    <input class="form-input" id="restock-qty" type="number" placeholder="Enter amount..."/>
+    <div style="font-size:13px;color:var(--teal-600);margin-bottom:14px;">New stock: <strong id="restock-preview">-</strong></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modal-restock')">Cancel</button>
+      <button class="btn-save" onclick="confirmRestock()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- URL MODAL -->
+<div class="modal-bg" id="modal-url">
+  <div class="modal">
+    <div class="modal-title">Apps Script Web App URL</div>
+    <p style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">Copy the doPost URL from Google Apps Script and paste it here.</p>
+    <label class="form-label">URL</label>
+    <input class="form-input" id="url-input" placeholder="https://script.google.com/macros/s/..." style="font-size:12px;"/>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modal-url')">Cancel</button>
+      <button class="btn-save" onclick="saveUrl()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUSH MODE -->
+<div id="rush-overlay">
+  <div class="rush-header">
+    <div class="rush-title">⚡ Rush Mode</div>
+    <button class="rush-close" onclick="closeRush()">✕</button>
+  </div>
+  <div class="rush-grid" id="rush-grid"></div>
+  <div class="rush-footer">
+    <div class="rush-selected-info" id="rush-selected-info">Select a product above</div>
+    <div class="rush-qty-row">
+      <button class="rush-qty-btn rush-qty-minus" onclick="adjustRushQty(-1)">−</button>
+      <div class="rush-qty-display" id="rush-qty-display">1</div>
+      <button class="rush-qty-btn rush-qty-plus" onclick="adjustRushQty(1)">+</button>
+    </div>
+    <div class="rush-qty-label">quantity</div>
+    <button class="rush-record-btn" id="rush-record-btn" onclick="recordRushSale()" disabled>Select a product first</button>
+  </div>
+  <div class="rush-toast" id="rush-toast"></div>
+</div>
+
+<button class="rush-fab" id="rush-fab" style="display:none" onclick="openRush()">⚡ Rush Mode</button>
+<button class="fab" id="add-fab" onclick="openAddProduct()">+</button>
+<div id="toast"></div>
+
+<script>
+// ── STORAGE SAFE WRAPPER ──
+const store = {
+  get(k, fallback) {
+    try { const v = store.get(k, null); return v !== null ? v : fallback; }
+    catch(e) { return fallback; }
+  },
+  set(k, v) { try { store.set(k, v); } catch(e) {} },
+  remove(k)  { try { store.remove(k); } catch(e) {} }
+};
+
+// ── STATE ──
+let products    = JSON.parse(store.get('bodega_products', '[]'));
+let sales       = JSON.parse(store.get('bodega_sales',    '[]'));
+let sheetUrl    = store.get('bodega_sheet_url', '');
+let pendingSync = JSON.parse(store.get('bodega_pending',  '[]'));
+let editingProductId = null;
+let restockProductId = null;
+let rushSelectedId   = null;
+let rushQty = 1;
+
+const todayKey   = () => new Date().toISOString().slice(0,10);
+const todaySales = () => sales.filter(s => s.date === todayKey());
+function idr(n){ return 'Rp ' + Math.round(n).toLocaleString('en-US'); }
+
+// ── TABS ──
+function switchTab(tab) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+  const tabs = ['inventory','sales','report','settings'];
+  document.querySelectorAll('.tab')[tabs.indexOf(tab)].classList.add('active');
+  document.getElementById('nav-' + tab).classList.add('active');
+  document.getElementById('add-fab').style.display   = tab === 'inventory' ? 'flex' : 'none';
+  document.getElementById('rush-fab').style.display  = tab === 'sales'     ? 'flex' : 'none';
+  if (tab === 'inventory') renderInventory();
+  if (tab === 'sales')     renderSales();
+  if (tab === 'report')    renderReport();
+  if (tab === 'settings')  renderSettings();
+}
+
+// ── INVENTORY ──
+function renderInventory() {
+  const list = document.getElementById('product-list');
+  document.getElementById('total-products').textContent  = products.length;
+  document.getElementById('low-stock-count').textContent = products.filter(p => p.stock <= p.reorder).length;
+  if (!products.length) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><div class="empty-text">No products yet.<br>Tap + to add one.</div></div>';
+    return;
+  }
+  list.innerHTML = products.map(p => {
+    const sc = p.stock === 0 ? 'var(--red-50);color:var(--red-600)' : p.stock <= p.reorder ? 'var(--amber-50);color:var(--amber-400)' : 'var(--teal-50);color:var(--teal-600)';
+    return `<div class="product-item">
+      <div class="product-thumb" onclick="setPhoto('${p.id}')">${p.photo ? `<img src="${p.photo}"/>` : getEmoji(p.name)}</div>
+      <div class="product-info" onclick="openEditProduct('${p.id}')" style="cursor:pointer">
+        <div class="product-name">${p.name}</div>
+        <div class="product-meta">${idr(p.sell)} · Cost ${idr(p.cost)} · ${p.unit||'pcs'}</div>
+      </div>
+      <div class="stock-controls">
+        <button class="stock-btn" onclick="adjustStock('${p.id}',-1)">−</button>
+        <span class="stock-num" style="background:${sc};padding:3px 10px;border-radius:20px">${p.stock}</span>
+        <button class="stock-btn" onclick="adjustStock('${p.id}',1)">+</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function getEmoji(name) {
+  const n = name.toLowerCase();
+  if (n.includes('chicken'))                           return '🍗';
+  if (n.includes('meatball') || n.includes('bakso'))  return '🍢';
+  if (n.includes('fish') || n.includes('shrimp') || n.includes('squid')) return '🐟';
+  if (n.includes('sausage') || n.includes('nugget'))  return '🌭';
+  if (n.includes('frozen') || n.includes('ice'))      return '🧊';
+  if (n.includes('noodle') || n.includes('mie'))      return '🍜';
+  if (n.includes('egg'))                              return '🥚';
+  if (n.includes('vegetable') || n.includes('veggie'))return '🥬';
+  if (n.includes('beef') || n.includes('meat'))       return '🥩';
+  if (n.includes('rice'))                             return '🍚';
+  if (n.includes('oil'))                              return '🫙';
+  if (n.includes('milk'))                             return '🥛';
+  if (n.includes('bread'))                            return '🍞';
+  return '📦';
+}
+
+function adjustStock(id, delta) {
+  const p = products.find(x => x.id === id);
+  if (!p) return;
+  p.stock = Math.max(0, p.stock + delta);
+  save(); renderInventory();
+  queueSync({type:'stockUpdate', productId:id, newStock:p.stock, productName:p.name});
+}
+
+function setPhoto(id) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+  input.onchange = e => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 120; canvas.height = 120;
+        const ctx = canvas.getContext('2d');
+        const s = Math.min(img.width, img.height);
+        ctx.drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,0,0,120,120);
+        const p = products.find(x => x.id === id);
+        if (p) { p.photo = canvas.toDataURL('image/jpeg',0.75); save(); renderInventory(); }
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+// ── ADD / EDIT PRODUCT ──
+function openAddProduct() {
+  editingProductId = null;
+  document.getElementById('modal-product-title').textContent = 'Add Product';
+  ['p-name','p-sell','p-cost','p-stock','p-reorder','p-unit'].forEach(id => document.getElementById(id).value = '');
+  openModal('modal-product');
+}
+
+function openEditProduct(id) {
+  const p = products.find(x => x.id === id); if (!p) return;
+  editingProductId = id;
+  document.getElementById('modal-product-title').textContent = 'Edit Product';
+  document.getElementById('p-name').value    = p.name;
+  document.getElementById('p-sell').value    = p.sell;
+  document.getElementById('p-cost').value    = p.cost;
+  document.getElementById('p-stock').value   = p.stock;
+  document.getElementById('p-reorder').value = p.reorder;
+  document.getElementById('p-unit').value    = p.unit || '';
+  openModal('modal-product');
+}
+
+function saveProduct() {
+  const name    = document.getElementById('p-name').value.trim();
+  const sell    = parseFloat(document.getElementById('p-sell').value)    || 0;
+  const cost    = parseFloat(document.getElementById('p-cost').value)    || 0;
+  const stock   = parseInt(document.getElementById('p-stock').value)     || 0;
+  const reorder = parseInt(document.getElementById('p-reorder').value)   || 5;
+  const unit    = document.getElementById('p-unit').value.trim()         || 'pcs';
+  if (!name) { showToast('Product name is required'); return; }
+
+  if (!editingProductId) {
+    const existing = products.find(p => p.name.toLowerCase() === name.toLowerCase());
+    if (existing) { closeModal('modal-product'); openRestockModal(existing.id); return; }
+    const np = {id:Date.now().toString(), name, sell, cost, stock, reorder, unit, photo:null};
+    products.push(np);
+    queueSync({type:'addProduct', product:np});
+  } else {
+    const p = products.find(x => x.id === editingProductId);
+    Object.assign(p, {name, sell, cost, stock, reorder, unit});
+    queueSync({type:'updateProduct', product:p});
+  }
+  save(); closeModal('modal-product'); renderInventory();
+  showToast(editingProductId ? 'Product updated' : 'Product added');
+}
+
+// ── RESTOCK MODAL ──
+function openRestockModal(id) {
+  const p = products.find(x => x.id === id); if (!p) return;
+  restockProductId = id;
+  document.getElementById('restock-product-name').textContent = p.name;
+  document.getElementById('restock-current').textContent = p.stock + ' ' + (p.unit||'pcs');
+  document.getElementById('restock-qty').value = '';
+  document.getElementById('restock-preview').textContent = p.stock;
+  document.getElementById('restock-qty').oninput = function() {
+    document.getElementById('restock-preview').textContent = (p.stock + (parseInt(this.value)||0)) + ' ' + (p.unit||'pcs');
+  };
+  openModal('modal-restock');
+}
+
+function confirmRestock() {
+  const p   = products.find(x => x.id === restockProductId); if (!p) return;
+  const add = parseInt(document.getElementById('restock-qty').value) || 0;
+  if (add <= 0) { showToast('Enter a valid amount'); return; }
+  p.stock += add;
+  save(); closeModal('modal-restock'); renderInventory();
+  queueSync({type:'stockUpdate', productId:p.id, newStock:p.stock, productName:p.name});
+  showToast(p.name + ' stock added: ' + add);
+}
+
+// ── SALES ──
+function renderSales() {
+  const sel = document.getElementById('sale-product-select');
+  sel.innerHTML = '<option value="">Select product...</option>' +
+    products.map(p => `<option value="${p.id}">${p.name} (stock: ${p.stock})</option>`).join('');
+  const ts      = todaySales();
+  const revenue = ts.reduce((s,x) => s + x.total, 0);
+  const profit  = ts.reduce((s,x) => s + x.profit, 0);
+  document.getElementById('today-revenue').textContent = idr(revenue);
+  document.getElementById('today-profit').textContent  = idr(profit);
+  document.getElementById('sale-count').textContent    = ts.length + ' transactions';
+  const log = document.getElementById('sales-log');
+  if (!ts.length) { log.innerHTML = '<div class="empty" style="padding:20px"><div class="empty-text">No sales today</div></div>'; return; }
+  log.innerHTML = [...ts].reverse().map(s =>
+    `<div class="sale-log-item">
+      <span style="font-size:20px">${getEmoji(s.productName)}</span>
+      <div class="sale-log-info">
+        <div class="sale-log-name">${s.productName} ×${s.qty}</div>
+        <div class="sale-log-meta">${s.time} · Profit ${idr(s.profit)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="sale-log-amount">${idr(s.total)}</span>
+        <button class="undo-btn" onclick="undoSale('${s.id}')">Undo</button>
+      </div>
+    </div>`).join('');
+}
+
+function recordSale() {
+  const pid = document.getElementById('sale-product-select').value;
+  const qty = parseInt(document.getElementById('sale-qty').value) || 1;
+  if (!pid) { showToast('Please select a product'); return; }
+  const p = products.find(x => x.id === pid); if (!p) return;
+  if (p.stock < qty) { showToast('Not enough stock!'); return; }
+  doRecordSale(p, qty); renderSales();
+}
+
+function doRecordSale(p, qty) {
+  p.stock -= qty;
+  const entry = {
+    id:          Date.now().toString(),
+    productId:   p.id, productName: p.name,
+    qty, sell:   p.sell, cost: p.cost,
+    total:       p.sell * qty, profit: (p.sell - p.cost) * qty,
+    date:        todayKey(),
+    time:        new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})
+  };
+  sales.push(entry); save();
+  queueSync({type:'recordSale', sale:entry});
+  return entry;
+}
+
+function undoSale(id) {
+  const idx = sales.findIndex(s => s.id === id); if (idx === -1) return;
+  const s = sales[idx];
+  const p = products.find(x => x.id === s.productId);
+  if (p) p.stock += s.qty;
+  sales.splice(idx, 1);
+  save(); renderSales(); showToast('Sale undone');
+}
+
+// ── RUSH MODE ──
+function openRush() {
+  rushSelectedId = null; rushQty = 1;
+  renderRushGrid();
+  document.getElementById('rush-overlay').classList.add('open');
+  document.getElementById('rush-qty-display').textContent  = '1';
+  document.getElementById('rush-selected-info').textContent = 'Select a product above';
+  document.getElementById('rush-record-btn').disabled      = true;
+  document.getElementById('rush-record-btn').textContent   = 'Select a product first';
+}
+
+function closeRush() {
+  document.getElementById('rush-overlay').classList.remove('open');
+  renderSales(); renderInventory();
+}
+
+function renderRushGrid() {
+  const grid = document.getElementById('rush-grid');
+  if (!products.length) { grid.innerHTML = '<div style="color:rgba(255,255,255,0.5);text-align:center;padding:40px;grid-column:span 2">No products yet</div>'; return; }
+  grid.innerHTML = products.map(p =>
+    `<div class="rush-card${p.id===rushSelectedId?' selected':''}" onclick="selectRushProduct('${p.id}')">
+      <div class="rush-card-img">${p.photo ? `<img src="${p.photo}"/>` : getEmoji(p.name)}</div>
+      <div class="rush-card-name">${p.name}</div>
+      <div class="rush-card-price">${idr(p.sell)}</div>
+      <div class="rush-card-stock">Stock: ${p.stock} ${p.unit||'pcs'}</div>
+    </div>`).join('');
+}
+
+function selectRushProduct(id) {
+  rushSelectedId = id; rushQty = 1;
+  document.getElementById('rush-qty-display').textContent = '1';
+  const p = products.find(x => x.id === id);
+  if (p) {
+    document.getElementById('rush-selected-info').innerHTML = `<span class="rush-selected-name">${p.name}</span> · ${idr(p.sell)} · Stock: ${p.stock}`;
+    document.getElementById('rush-record-btn').disabled    = false;
+    document.getElementById('rush-record-btn').textContent = 'RECORD ' + idr(p.sell * rushQty);
+  }
+  renderRushGrid();
+}
+
+function adjustRushQty(delta) {
+  rushQty = Math.max(1, rushQty + delta);
+  document.getElementById('rush-qty-display').textContent = rushQty;
+  const p = products.find(x => x.id === rushSelectedId);
+  if (p) document.getElementById('rush-record-btn').textContent = 'RECORD ' + idr(p.sell * rushQty);
+}
+
+function recordRushSale() {
+  if (!rushSelectedId) return;
+  const p = products.find(x => x.id === rushSelectedId); if (!p) return;
+  if (p.stock < rushQty) { showRushToast('Not enough stock!'); return; }
+  doRecordSale(p, rushQty);
+  showRushToast('✓ ' + p.name + ' ×' + rushQty + ' → ' + idr(p.sell * rushQty));
+  rushSelectedId = null; rushQty = 1;
+  document.getElementById('rush-qty-display').textContent  = '1';
+  document.getElementById('rush-selected-info').textContent = 'Select a product above';
+  document.getElementById('rush-record-btn').disabled      = true;
+  document.getElementById('rush-record-btn').textContent   = 'Select a product first';
+  renderRushGrid();
+}
+
+function showRushToast(msg) {
+  const t = document.getElementById('rush-toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ── REPORT ──
+function renderReport() {
+  const ts      = todaySales();
+  const revenue = ts.reduce((s,x) => s + x.total, 0);
+  const cost    = ts.reduce((s,x) => s + x.cost * x.qty, 0);
+  const profit  = revenue - cost;
+  const margin  = revenue > 0 ? ((profit/revenue)*100).toFixed(1) : '0.0';
+  document.getElementById('rpt-revenue').textContent   = idr(revenue);
+  document.getElementById('rpt-cost').textContent      = idr(cost);
+  document.getElementById('rpt-profit').textContent    = idr(profit);
+  document.getElementById('rpt-margin').textContent    = margin + '%';
+  document.getElementById('rpt-txns').textContent      = ts.length;
+  const byProduct = {};
+  ts.forEach(s => { byProduct[s.productId] = (byProduct[s.productId]||0) + s.qty; });
+  const sorted = Object.entries(byProduct).sort((a,b) => b[1]-a[1]);
+  const trendsEl = document.getElementById('rpt-trends');
+  if (!sorted.length) { trendsEl.innerHTML = '<div style="color:var(--gray-500);font-size:13px;padding:8px 0">No sales yet</div>'; }
+  else {
+    trendsEl.innerHTML = sorted.map(([id,qty],i) => {
+      const p     = products.find(x => x.id === id);
+      const badge = i===0 ? '<span class="trend-badge trend-hot">🔥 Hot</span>' : qty>2 ? '<span class="trend-badge trend-ok">✅ Moving</span>' : '<span class="trend-badge trend-slow">🧊 Slow</span>';
+      return `<div class="report-row"><span>${p?p.name:id}</span><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;color:var(--gray-500)">${qty}x</span>${badge}</div></div>`;
+    }).join('');
+  }
+  const low = products.filter(p => p.stock <= p.reorder);
+  const restockEl = document.getElementById('rpt-restock');
+  if (!low.length) { restockEl.innerHTML = '<div style="color:var(--teal-600);font-size:13px;padding:8px 0">✅ All stock levels OK</div>'; }
+  else { restockEl.innerHTML = low.map(p => `<div class="restock-alert">⚠️ ${p.name} — ${p.stock} ${p.unit||'pcs'} remaining</div>`).join(''); }
+  document.getElementById('rpt-stock-val').textContent = idr(products.reduce((s,p) => s + p.cost * p.stock, 0));
+}
+
+function copyReport() {
+  const ts      = todaySales();
+  const revenue = ts.reduce((s,x) => s + x.total, 0);
+  const profit  = revenue - ts.reduce((s,x) => s + x.cost*x.qty, 0);
+  const margin  = revenue > 0 ? ((profit/revenue)*100).toFixed(1) : '0.0';
+  const dateStr = new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  let text = `📊 BODEGA DAILY REPORT\n${dateStr}\n${'─'.repeat(30)}\n`;
+  text += `Revenue      : ${idr(revenue)}\nProfit       : ${idr(profit)}\nMargin       : ${margin}%\nTransactions : ${ts.length}\n${'─'.repeat(30)}\n`;
+  const byProd = {};
+  ts.forEach(s => { byProd[s.productName] = (byProd[s.productName]||0) + s.qty; });
+  text += 'Products Sold:\n' + Object.entries(byProd).map(([n,q]) => `  • ${n}: ${q}x`).join('\n') + '\n';
+  const low = products.filter(p => p.stock <= p.reorder);
+  if (low.length) text += '\n⚠️ Needs Restock:\n' + low.map(p => `  • ${p.name}: ${p.stock} ${p.unit||'pcs'}`).join('\n');
+  navigator.clipboard.writeText(text).then(() => showToast('Report copied!')).catch(() => showToast('Copy failed'));
+}
+
+function exportExcel() {
+  if (!window.XLSX) { showToast('Library not ready'); return; }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Name','Selling Price','Cost Price','Stock','Reorder Point','Unit'],...products.map(p=>[p.name,p.sell,p.cost,p.stock,p.reorder,p.unit||'pcs'])]), 'Current Stock');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Date','Time','Product','Qty','Selling Price','Total','Profit'],...sales.map(s=>[s.date,s.time,s.productName,s.qty,s.sell,s.total,s.profit])]), 'Sales Log');
+  const byProd={};
+  sales.forEach(s=>{ if(!byProd[s.productId]) byProd[s.productId]={name:s.productName,qty:0,revenue:0,profit:0}; byProd[s.productId].qty+=s.qty; byProd[s.productId].revenue+=s.total; byProd[s.productId].profit+=s.profit; });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Product','Total Sold','Revenue','Profit'],...Object.values(byProd).map(x=>[x.name,x.qty,x.revenue,x.profit])]), 'Product Summary');
+  const ts=todaySales(), rev=ts.reduce((s,x)=>s+x.total,0), pft=rev-ts.reduce((s,x)=>s+x.cost*x.qty,0);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Date','Revenue','Profit','Margin','Transactions'],[todayKey(),rev,pft,rev>0?((pft/rev)*100).toFixed(1)+'%':'0%',ts.length]]), 'Day Summary');
+  XLSX.writeFile(wb, 'bodega-' + todayKey() + '.xlsx');
+  showToast('Excel downloaded!');
+}
+
+// ── SETTINGS ──
+function renderSettings() {
+  document.getElementById('url-display').textContent = sheetUrl || 'Not set';
+  const last = store.get('bodega_last_sync', null);
+  document.getElementById('last-sync-text').textContent = last ? 'Last synced: ' + last : 'Never synced';
+}
+
+function showUrlModal() { document.getElementById('url-input').value = sheetUrl; openModal('modal-url'); }
+
+function saveUrl() {
+  sheetUrl = document.getElementById('url-input').value.trim();
+  store.set('bodega_sheet_url', sheetUrl);
+  closeModal('modal-url'); renderSettings(); showToast('URL saved');
+}
+
+function resetSales() {
+  if (!confirm('Delete all of today\'s sales?')) return;
+  const today = todayKey();
+  sales.filter(s => s.date === today).forEach(s => { const p = products.find(x => x.id === s.productId); if (p) p.stock += s.qty; });
+  sales = sales.filter(s => s.date !== today);
+  save(); renderSettings(); showToast('Today\'s sales reset');
+}
+
+function clearAll() {
+  if (!confirm('Delete ALL product data and history? This cannot be undone.')) return;
+  products = []; sales = []; pendingSync = [];
+  store.set('bodega_products', '[]');
+  store.set('bodega_sales', '[]');
+  store.set('bodega_pending', '[]');
+  renderInventory(); showToast('All data cleared');
+}
+
+// ── PULL FROM SHEET ──
+async function pullFromSheet() {
+  if (!sheetUrl) { showToast('Set the Apps Script URL first in Settings'); switchTab('settings'); return; }
+  const pullBtn = document.querySelector('.pull-btn');
+  if (pullBtn) pullBtn.textContent = '⏳';
+  showToast('Pulling from Sheet...');
+  try {
+    const res = await fetch(sheetUrl, {method:'GET', redirect:'follow'});
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.status !== 200) throw new Error(data.message);
+    const pCount = data.products ? data.products.length : 0;
+    const sCount = data.sales    ? data.sales.length    : 0;
+    const confirmed = confirm(
+      'Pull from Google Sheet?\n\n' +
+      '• ' + pCount + ' products found\n' +
+      '• ' + sCount + ' sales records found\n\n' +
+      'Products will be replaced. Sales will be merged.\n\nContinue?'
+    );
+    if (!confirmed) { if (pullBtn) pullBtn.textContent = '↓ Pull'; return; }
+    const photoMap = {};
+    products.forEach(p => { if (p.photo) photoMap[p.id] = p.photo; });
+    if (data.products && data.products.length > 0) {
+      products = data.products.map(p => ({...p, photo: photoMap[p.id] || null}));
+    }
+    if (data.sales && data.sales.length > 0) {
+      const existingIds = new Set(sales.map(s => s.id));
+      sales = [...sales, ...data.sales.filter(s => !existingIds.has(s.id))];
+    }
+    save();
+    pendingSync = []; store.set('bodega_pending','[]');
+    const now = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    store.set('bodega_last_sync', now);
+    updateSyncDot();
+    const activeIdx = [...document.querySelectorAll('.tab')].findIndex(t => t.classList.contains('active'));
+    const tabNames  = ['inventory','sales','report','settings'];
+    switchTab(tabNames[activeIdx] || 'inventory');
+    showToast('Pulled ' + pCount + ' products, ' + sCount + ' sales');
+    if (pullBtn) pullBtn.textContent = '↓ Pull';
+  } catch(err) {
+    showToast('Pull failed: ' + err.message);
+    if (pullBtn) pullBtn.textContent = '↓ Pull';
+  }
+}
+
+// ── SYNC ──
+function queueSync(payload) {
+  pendingSync.push({...payload, timestamp:new Date().toISOString()});
+  store.set('bodega_pending', JSON.stringify(pendingSync));
+  updateSyncDot();
+}
+
+function updateSyncDot() {
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  if (pendingSync.length > 0) { dot.className='sync-dot pending'; lbl.textContent='Sync ('+pendingSync.length+')'; }
+  else { dot.className='sync-dot'; lbl.textContent='Sync'; }
+}
+
+async function syncAll() {
+  if (!sheetUrl) { showToast('Set the Apps Script URL first in Settings'); switchTab('settings'); return; }
+  document.getElementById('sync-label').textContent = '⏳';
+  try {
+    const res = await fetch(sheetUrl, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'fullSync', products, sales:todaySales(), pending:pendingSync, date:todayKey()})
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    pendingSync = []; store.set('bodega_pending','[]');
+    const now = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    store.set('bodega_last_sync', now);
+    updateSyncDot(); showToast('Sync successful!'); renderSettings();
+  } catch(e) {
+    document.getElementById('sync-dot').className = 'sync-dot error';
+    document.getElementById('sync-label').textContent = 'Error';
+    showToast('Sync failed: ' + e.message);
+  }
+}
+
+// ── UTILS ──
+function save() {
+  store.set('bodega_products', JSON.stringify(products));
+  store.set('bodega_sales',    JSON.stringify(sales));
+}
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-bg').forEach(bg => {
+  bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); });
+});
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── INIT ──
+document.getElementById('header-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long'});
+updateSyncDot();
+renderInventory();
+</script>
+</body>
+</html>
