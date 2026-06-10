@@ -789,7 +789,7 @@ async function pullFromSheet() {
   if (pullBtn) pullBtn.textContent = '⏳';
   showToast('Pulling from Sheet...');
   try {
-    const res = await fetch(sheetUrl, {method:'GET', redirect:'follow'});
+    const res = await fetch(sheetUrl, { method:'GET', redirect:'follow', mode:'cors' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data.status !== 200) throw new Error(data.message);
@@ -846,8 +846,11 @@ async function syncAll() {
   document.getElementById('sync-label').textContent = '⏳';
   try {
     const res = await fetch(sheetUrl, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({action:'fullSync', products, sales:todaySales(), pending:pendingSync, date:todayKey()})
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action:'fullSync', products, sales:todaySales(), pending:pendingSync, date:todayKey() }),
+      redirect: 'follow',
+      mode: 'cors'
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     pendingSync = []; store.set('bodega_pending','[]');
