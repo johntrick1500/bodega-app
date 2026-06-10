@@ -840,46 +840,11 @@ function clearAll() {
 // ── PULL FROM SHEET ──
 async function pullFromSheet() {
   if (!sheetUrl) { showToast('Set the Apps Script URL first in Settings'); switchTab('settings'); return; }
-  const pullBtn = document.querySelector('.pull-btn');
+  const pullBtn = document.getElementById('pull-btn');
   if (pullBtn) pullBtn.textContent = '⏳';
-  showToast('Pulling from Sheet...');
-  try {
-    const res = await fetch(sheetUrl, { method:'GET', redirect:'follow', mode:'cors' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    if (data.status !== 200) throw new Error(data.message);
-    const pCount = data.products ? data.products.length : 0;
-    const sCount = data.sales    ? data.sales.length    : 0;
-    const confirmed = confirm(
-      'Pull from Google Sheet?\n\n' +
-      '• ' + pCount + ' products found\n' +
-      '• ' + sCount + ' sales records found\n\n' +
-      'Products will be replaced. Sales will be merged.\n\nContinue?'
-    );
-    if (!confirmed) { if (pullBtn) pullBtn.textContent = '↓ Pull'; return; }
-    const photoMap = {};
-    products.forEach(p => { if (p.photo) photoMap[p.id] = p.photo; });
-    if (data.products && data.products.length > 0) {
-      products = data.products.map(p => ({...p, photo: photoMap[p.id] || null}));
-    }
-    if (data.sales && data.sales.length > 0) {
-      const existingIds = new Set(sales.map(s => s.id));
-      sales = [...sales, ...data.sales.filter(s => !existingIds.has(s.id))];
-    }
-    save();
-    pendingSync = []; store.set('bodega_pending','[]');
-    const now = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
-    store.set('bodega_last_sync', now);
-    setSyncStatus(pendingSync.length > 0 ? 'pending' : 'ok');
-    const activeIdx = [...document.querySelectorAll('.tab')].findIndex(t => t.classList.contains('active'));
-    const tabNames  = ['inventory','sales','report','settings'];
-    switchTab(tabNames[activeIdx] || 'inventory');
-    showToast('Pulled ' + pCount + ' products, ' + sCount + ' sales');
-    if (pullBtn) pullBtn.textContent = '↓ Pull';
-  } catch(err) {
-    showToast('Pull failed: ' + err.message);
-    if (pullBtn) pullBtn.textContent = '↓ Pull';
-  }
+  await silentPull();
+  showToast('✅ Data refreshed from Sheet');
+  if (pullBtn) pullBtn.textContent = '↓ Pull';
 }
 
 // ── SYNC ──
@@ -934,34 +899,41 @@ renderInventory();
 window.addEventListener('online',  () => { flushPending(); setSyncStatus('ok'); });
 window.addEventListener('offline', () => setSyncStatus('offline'));
 
-// Auto-pull from Sheet on load if URL is set
-if (sheetUrl) {
+// Auto-pull from Sheet on load — silent, no confirm dialog
+async function silentPull() {
+  if (!sheetUrl) return;
   setSyncStatus('pulling');
-  fetch(sheetUrl, { method:'GET', redirect:'follow', mode:'cors' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.status !== 200) throw new Error(data.message);
-      const photoMap = {};
-      products.forEach(p => { if (p.photo) photoMap[p.id] = p.photo; });
-      if (data.products && data.products.length > 0) {
-        products = data.products.map(p => ({ ...p, photo: photoMap[p.id] || null }));
-        save();
-        renderInventory();
-      }
-      if (data.sales && data.sales.length > 0) {
-        const existingIds = new Set(sales.map(s => s.id));
-        const newSales = data.sales.filter(s => !existingIds.has(s.id));
-        if (newSales.length) { sales = [...sales, ...newSales]; save(); }
-      }
-      setSyncStatus('ok');
-      // flush any pending changes queued while offline
-      if (pendingSync.length) flushPending();
-    })
-    .catch(() => {
-      // offline or error — use cached data silently
-      setSyncStatus(pendingSync.length > 0 ? 'pending' : 'offline');
-    });
+  try {
+    const res  = await fetch(sheetUrl, { method:'GET', redirect:'follow', mode:'cors' });
+    const data = await res.json();
+    if (data.status !== 200) throw new Error(data.message);
+
+    const photoMap = {};
+    products.forEach(p => { if (p.photo) photoMap[p.id] = p.photo; });
+
+    if (data.products && data.products.length > 0) {
+      products = data.products.map(p => ({ ...p, photo: photoMap[p.id] || null }));
+    }
+    if (data.sales && data.sales.length > 0) {
+      const existingIds = new Set(sales.map(s => s.id));
+      const newSales = data.sales.filter(s => !existingIds.has(s.id));
+      if (newSales.length) sales = [...sales, ...newSales];
+    }
+    save();
+
+    // Refresh whichever tab is active
+    const tabs = ['inventory','sales','report','settings'];
+    const activeIdx = [...document.querySelectorAll('.tab')].findIndex(t => t.classList.contains('active'));
+    switchTab(tabs[activeIdx >= 0 ? activeIdx : 0]);
+
+    setSyncStatus('ok');
+    if (pendingSync.length) flushPending();
+  } catch(e) {
+    // Offline or error — use cached data silently, no toast
+    setSyncStatus(pendingSync.length > 0 ? 'pending' : 'offline');
+  }
 }
+silentPull();
 </script>
 </body>
 </html>
