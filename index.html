@@ -400,6 +400,61 @@ const todayKey   = () => new Date().toISOString().slice(0,10);
 const todaySales = () => sales.filter(s => s.date === todayKey());
 function idr(n){ return 'Rp ' + Math.round(n).toLocaleString('en-US'); }
 
+
+// ── SYNC STATUS ──
+function setSyncStatus(state) {
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  if (!dot || !lbl) return;
+  const map = {
+    ok:      { cls: '',        text: 'Synced'  },
+    syncing: { cls: '',        text: '⏳'       },
+    pending: { cls: 'pending', text: 'Pending (' + pendingSync.length + ')' },
+    offline: { cls: 'error',   text: 'Offline' },
+    pulling: { cls: 'pending', text: 'Loading...' },
+  };
+  const s = map[state] || map.ok;
+  dot.className     = 'sync-dot ' + s.cls;
+  lbl.textContent   = s.text;
+}
+
+// ── REAL-TIME PUSH ──
+function makePayload(action, data) {
+  return { action, _id: Date.now() + '_' + Math.random().toString(36).slice(2), ...data };
+}
+
+function pushAction(payload) {
+  if (!sheetUrl) return;
+  syncQueue = syncQueue.then(async () => {
+    setSyncStatus('syncing');
+    try {
+      const res = await fetch(sheetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+        redirect: 'follow',
+        mode: 'cors'
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      pendingSync = pendingSync.filter(p => p._id !== payload._id);
+      store.set('bodega_pending', JSON.stringify(pendingSync));
+      setSyncStatus('ok');
+    } catch(e) {
+      if (!pendingSync.find(p => p._id === payload._id)) {
+        pendingSync.push(payload);
+        store.set('bodega_pending', JSON.stringify(pendingSync));
+      }
+      setSyncStatus('pending');
+    }
+  });
+}
+
+async function flushPending() {
+  if (!sheetUrl || !pendingSync.length) return;
+  const batch = [...pendingSync];
+  for (const payload of batch) { pushAction(payload); }
+}
+
 // ── TABS ──
 function switchTab(tab) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -466,7 +521,7 @@ function adjustStock(id, delta) {
   if (!p) return;
   p.stock = Math.max(0, p.stock + delta);
   save(); renderInventory();
-  queueSync({type:'stockUpdate', productId:id, newStock:p.stock, productName:p.name});
+  pushAction(makePayload('stockUpdate', { productId:id, newStock:p.stock, productName:p.name }));
 }
 
 function setPhoto(id) {
@@ -528,11 +583,11 @@ function saveProduct() {
     if (existing) { closeModal('modal-product'); openRestockModal(existing.id); return; }
     const np = {id:Date.now().toString(), name, sell, cost, stock, reorder, unit, photo:null};
     products.push(np);
-    queueSync({type:'addProduct', product:np});
+    pushAction(makePayload('addProduct', { product:np }));
   } else {
     const p = products.find(x => x.id === editingProductId);
     Object.assign(p, {name, sell, cost, stock, reorder, unit});
-    queueSync({type:'updateProduct', product:p});
+    pushAction(makePayload('updateProduct', { product:p }));
   }
   save(); closeModal('modal-product'); renderInventory();
   showToast(editingProductId ? 'Product updated' : 'Product added');
@@ -558,7 +613,7 @@ function confirmRestock() {
   if (add <= 0) { showToast('Enter a valid amount'); return; }
   p.stock += add;
   save(); closeModal('modal-restock'); renderInventory();
-  queueSync({type:'stockUpdate', productId:p.id, newStock:p.stock, productName:p.name});
+  pushAction(makePayload('stockUpdate', { productId: p.id, newStock: p.stock, productName: p.name }));
   showToast(p.name + ' stock added: ' + add);
 }
 
@@ -609,7 +664,7 @@ function doRecordSale(p, qty) {
     time:        new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})
   };
   sales.push(entry); save();
-  queueSync({type:'recordSale', sale:entry});
+  pushAction(makePayload('recordSale', { sale:entry }));
   return entry;
 }
 
@@ -815,7 +870,7 @@ async function pullFromSheet() {
     pendingSync = []; store.set('bodega_pending','[]');
     const now = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
     store.set('bodega_last_sync', now);
-    updateSyncDot();
+    setSyncStatus(pendingSync.length > 0 ? 'pending' : 'ok');
     const activeIdx = [...document.querySelectorAll('.tab')].findIndex(t => t.classList.contains('active'));
     const tabNames  = ['inventory','sales','report','settings'];
     switchTab(tabNames[activeIdx] || 'inventory');
@@ -828,18 +883,6 @@ async function pullFromSheet() {
 }
 
 // ── SYNC ──
-function queueSync(payload) {
-  pendingSync.push({...payload, timestamp:new Date().toISOString()});
-  store.set('bodega_pending', JSON.stringify(pendingSync));
-  updateSyncDot();
-}
-
-function updateSyncDot() {
-  const dot = document.getElementById('sync-dot');
-  const lbl = document.getElementById('sync-label');
-  if (pendingSync.length > 0) { dot.className='sync-dot pending'; lbl.textContent='Sync ('+pendingSync.length+')'; }
-  else { dot.className='sync-dot'; lbl.textContent='Sync'; }
-}
 
 async function syncAll() {
   if (!sheetUrl) { showToast('Set the Apps Script URL first in Settings'); switchTab('settings'); return; }
@@ -856,7 +899,7 @@ async function syncAll() {
     pendingSync = []; store.set('bodega_pending','[]');
     const now = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
     store.set('bodega_last_sync', now);
-    updateSyncDot(); showToast('Sync successful!'); renderSettings();
+    setSyncStatus(pendingSync.length > 0 ? 'pending' : 'ok'); showToast('Sync successful!'); renderSettings();
   } catch(e) {
     document.getElementById('sync-dot').className = 'sync-dot error';
     document.getElementById('sync-label').textContent = 'Error';
@@ -884,8 +927,41 @@ function showToast(msg) {
 
 // ── INIT ──
 document.getElementById('header-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long'});
-updateSyncDot();
+setSyncStatus(pendingSync.length > 0 ? 'pending' : 'ok');
 renderInventory();
+
+// Online/offline handlers
+window.addEventListener('online',  () => { flushPending(); setSyncStatus('ok'); });
+window.addEventListener('offline', () => setSyncStatus('offline'));
+
+// Auto-pull from Sheet on load if URL is set
+if (sheetUrl) {
+  setSyncStatus('pulling');
+  fetch(sheetUrl, { method:'GET', redirect:'follow', mode:'cors' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status !== 200) throw new Error(data.message);
+      const photoMap = {};
+      products.forEach(p => { if (p.photo) photoMap[p.id] = p.photo; });
+      if (data.products && data.products.length > 0) {
+        products = data.products.map(p => ({ ...p, photo: photoMap[p.id] || null }));
+        save();
+        renderInventory();
+      }
+      if (data.sales && data.sales.length > 0) {
+        const existingIds = new Set(sales.map(s => s.id));
+        const newSales = data.sales.filter(s => !existingIds.has(s.id));
+        if (newSales.length) { sales = [...sales, ...newSales]; save(); }
+      }
+      setSyncStatus('ok');
+      // flush any pending changes queued while offline
+      if (pendingSync.length) flushPending();
+    })
+    .catch(() => {
+      // offline or error — use cached data silently
+      setSyncStatus(pendingSync.length > 0 ? 'pending' : 'offline');
+    });
+}
 </script>
 </body>
 </html>
